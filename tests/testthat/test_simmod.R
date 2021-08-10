@@ -1,5 +1,5 @@
-context("test model simulation")
-
+# context("test model simulation")
+library(eppasm)
 pjnz <- system.file("extdata/testpjnz", "Botswana2018.PJNZ", package="eppasm")
 bw <- prepare_spec_fit(pjnz, proj.end=2022.5)
 
@@ -26,11 +26,29 @@ bw_prev_mod <- c(0.00045, 0.00080, 0.0014, 0.00245, 0.00424, 0.00725, 0.01214,
                  0.23186, 0.22866, 0.22569, 0.22277, 0.21931, 0.21555, 0.21147,
                  0.2069, 0.20155, 0.19559, 0.1893, 0.1829, 0.1763, 0.16953, 0.16266)
 
+
+library(rbenchmark)
+benchmark(simmod(bw_fp))
+benchmark(simmod(bw_fp, VERSION="R"))
+
+bw_fp$rvec[] <- 0
+bw_fp$iota <- 0
+mod <- simmod(bw_fp)
+prev(mod)
+
 test_that("model simulation returns correct prevalence", {
   expect_equal(round(prev(simmod(bw_fp))[11:53], 5), bw_prev_mod)
   expect_equal(round(prev(simmod(bw_fp, VERSION="R"))[11:53], 5), bw_prev_mod)
 })
 
+library(JuliaCall)
+julia_source("julia/eppasm.jl")
+bw_fp$eppmodInt <- match(bw_fp$eppmod, c("rtrend", "directincid"), nomatch=0) # 0: r-spline;
+bw_fp$incidmodInt <- match(bw_fp$incidmod, c("eppspectrum"))-1L  # -1 for 0-based indexing
+j_bw_fp <- JuliaObject(bw_fp)
+jmod <- julia_call("simmodJ", j_bw_fp)
+jmod[[14]]
+benchmark(julia_call("simmodJ", j_bw_fp))
 
 pjnz <- system.file("extdata/testpjnz", "Mozambique_Maputo_Cidade2018.PJNZ", package="eppasm")
 mpm <- prepare_spec_fit(pjnz, proj.end=2021.5)
