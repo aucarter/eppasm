@@ -1,118 +1,108 @@
-function pop_project_one_step(t, pop, hivpop, artpop)
+function pop_project_one_step!(mod_data, t, pop, hivpop, artpop, age_binner, max_age_binner)
   ## Population projection
-  # Age pop one year
-  pop[t, :, :, 2:end] = pop[t - 1, :, :, 1:(end - 1)]
-  pop[t, :, :, end] = pop[t - 1, :, :, end]
-
   # Calculate probability of aging from one HIV positive age bin to the next
-  if sum(pop[t-1, HIVP, :, :]) > 0
-    hiv_ag_prob = (pop[t-1, HIVP, :, :] * max_age_binner) ./ (pop[t-1, HIVP, :, :] * age_binner)
+  if sum(pop[HIVP, :, :]) > 0
+    hiv_ag_prob = (pop[HIVP, :, :] * max_age_binner) ./ (pop[HIVP, :, :] * age_binner)
     replace!(hiv_ag_prob, NaN=>0.)
     hiv_ag_prob[:, end] .= 0
   else
     hiv_ag_prob = zeros(NG, hAG)
   end
 
+  # Save last year fertile female pop for fertility calculation
+  fert_idx = pIDX_FERT:(pIDX_FERT + pAG_FERT - 1)
+  last_fem_pop = pop[:, FEMALE, fert_idx]
+
+  # Age pop one year
+  term_pop = pop[:, :, end]
+  pop[:, :, 2:end] = pop[:, :, 1:(end - 1)]
+  pop[:, :, end] = pop[:, :, end] + term_pop
+
+
   # Age the HIV positive population
-  @. hivpop[t, :, 2:end, :] =  (1-hiv_ag_prob[:, 2:end]) * hivpop[t-1, :, 2:end, : ] + hiv_ag_prob[:, 1:end-1] * hivpop[t-1, :, 1:end-1, :]
-  if t > t_ART_start
-    @. artpop[t, :, 2:end, :, :] =  (1-hiv_ag_prob[:, 2:end]) * artpop[t-1, :, 2:end, :, :] + hiv_ag_prob[:, 1:end-1] * artpop[t-1, :, 1:end-1, :, :]
+  last_hivpop = hivpop
+  last_artpop = artpop
+  @. hivpop[:, 2:end, :] =  (1-hiv_ag_prob[:, 2:end]) * last_hivpop[:, 2:end, : ] + hiv_ag_prob[:, 1:end-1] * last_hivpop[:, 1:end-1, :]
+  if t > mod_data[:tARTstart]
+    @. artpop[:, 2:end, :, :] =  (1-hiv_ag_prob[:, 2:end]) * last_artpop[:, 2:end, :, :] + hiv_ag_prob[:, 1:end-1] * last_artpop[:, 1:end-1, :, :]
   end
 
   # Lagged birth to youngest age group
-  for g = 1:NG
-    if use_entrantprev
-      entrant_prev = entrantprev[t, g]
-    else
-      entrant_prev = pregprevlag[t-1] * verttrans_lag[t-1] * paedsurv_lag[t-1]
-    end
+  entrant_prev = mod_data[:entrantprev]'[t, :]
+  # else
+  #   entrant_prev = pregprevlag[t-1] * verttrans_lag[t-1] * paedsurv_lag[t-1]
+  # end
 
-    if bin_popadjust
-      pop[t, HIVN, g, 1] =  entrantpop[t-1, g] * (1.0-entrant_prev)
-      paedsurv_g = entrantpop[t-1, g] * entrant_prev
-    else
-      pop[t, HIVN, g, 1] = birthslag[t-1, g] * cumsurv[t-1, g] * (1.0-entrant_prev / paedsurv_lag[t-1]) + cumnetmigr[t-1, g] * (1.0-pregprevlag[t-1] * netmig_hivprob)
-      paedsurv_g = birthslag[t-1, g] * cumsurv[t-1, g] * entrant_prev + cumnetmigr[t-1, g] * entrant_prev    
-    end
+  if mod_data[:popadjust]
+    @. pop[HIVN, :, 1] =  mod_data[:entrantpop]'[t - 1, :] * (1.0-entrant_prev)
+    paedsurv = mod_data[:entrantpop]'[t - 1, :] .* entrant_prev
+  else
+    @. pop[HIVN, :, 1] = mod_data[:birthslag]'[t-1, g] * cumsurv[t-1, g] * (1.0-entrant_prev / paedsurv_lag[t-1]) + cumnetmigr[t-1, g] * (1.0-pregprevlag[t-1] * netmig_hivprob)
+    @. paedsurv = mod_data[:birthslag]'[t-1, :] * cumsurv[t-1, g] * entrant_prev + cumnetmigr[t-1, g] * entrant_prev    
+  end
 
-    pop[t, HIVP, g, 1] = paedsurv_g
-    entrantprev_out[t] = (pop[t, HIVP, MALE, 1] + pop[t, HIVP, FEMALE, 1]) / (pop[t, HIVN, MALE, 1] + pop[t, HIVN, FEMALE, 1] + pop[t, HIVP, MALE, 1] + pop[t, HIVP, FEMALE, 1])
+  pop[HIVP, :, 1] = paedsurv
+  entrantprev_out[t] = sum(pop[HIVP, :, 1]) / sum(pop[:, :, 1])
 
-    for hm = 1:hDS
-      hivpop[t, g, 1, hm] = (1-hiv_ag_prob[g, 1]) * hivpop[t-1, g, 1, hm] + paedsurv_g * paedsurv_cd4dist[t, g, hm] * (1.0 - entrantartcov[t, g])
-      if t > t_ART_start
-        for hu = 1:hTS
-          artpop[t, g, 1, hm, hu] = (1-hiv_ag_prob[g, 1]) * artpop[t-1, g, 1, hm, hu]
-          artpop[t, g, 1, hm, hu] += paedsurv_g * paedsurv_artcd4dist[t, g, hm, hu] * entrantartcov[t, g]
-        end
-      end
-    end
+  first_remain = (1 .- hiv_ag_prob[:, 1]) .* last_hivpop[:, 1, :]
+  off_art_entrants = permutedims(mod_data[:paedsurv_cd4dist], (3, 2, 1))[t, :, :] .* ((1.0 .- mod_data[:entrantartcov]'[t, :]) .* paedsurv)
+  hivpop[:, 1, :] = first_remain + off_art_entrants
+  if t > mod_data[:tARTstart]
+    @. artpop[:, 1, :, :] = (1-hiv_ag_prob[:, 1]) * last_artpop[:, 1, :, :]
+    artpop[:, 1, :, :] .+= paedsurv .* permutedims(mod_data[:paedsurv_artcd4dist], (4, 3, 2, 1))[t, :, :, :] .* mod_data[:entrantartcov]'[t, :]
   end
 
   # non-HIV mortality and migration
-  hivpop_ha = pop[t, HIVP, :, :] * age_binner
-  qx = 1 .- Sx[t, :, :]
-  ndeaths = pop[t, HIVN, :, :] .* qx
-  pop[t, HIVN, :, :] .-= ndeaths
-  hdeaths = pop[t, HIVP, :, :] .* qx
-  pop[t, HIVP, :, :] .-= hdeaths
+  hivpop_ha = pop[HIVP, :, :] * age_binner
+  qx = 1 .- mod_data[:Sx][t, :, :]
+  ndeaths = pop[HIVN, :, :] .* qx
+  pop[HIVN, :, :] .-= ndeaths
+  hdeaths = pop[HIVP, :, :] .* qx
+  pop[HIVP, :, :] .-= hdeaths
 
   # net migration
-  migrate = @. netmigr[t, :, :] * (1+Sx[t, :, :])/2.0 / (pop[t, HIVN, :, :] + pop[t, HIVP, :, :])
-  pop[t, HIVN, :, :] .*= 1 .+ migrate
-  hmig = migrate .* pop[t, HIVP, :, :]
+  migrate = @. mod_data[:netmigr][t, :, :] * (1+mod_data[:Sx][t, :, :])/2.0 / (pop[HIVN, :, :] + pop[HIVP, :, :])
+  pop[HIVN, :, :] .*= 1 .+ migrate
+  hmig = migrate .* pop[HIVP, :, :]
   deathsmig = hmig * age_binner
-  pop[t, HIVP, :, :] .+= hmig
+  pop[HIVP, :, :] .+= hmig
   deathmigrate = deathsmig ./ hivpop_ha
   replace!(deathmigrate, NaN=>0.)
-  hivpop[t, :, :, :] .*= 1 .+ deathmigrate
-  if(t > t_ART_start)
-    artpop[t, :, :, :, :] .*= 1 .+ deathmigrate
+  hivpop[:, :, :] .*= 1 .+ deathmigrate
+  if(t > mod_data[:tARTstart])
+    artpop[:, :, :, :] .*= 1 .+ deathmigrate
   end
   natdeaths[t, :, :] .= ndeaths .+ hdeaths
 
   # Fertility
-  global births = 0.0
-  global births_by_ha = zeros(hAG_FERT)
-  for m = 1:pDS
-    a = pIDX_FERT
-    for ha = (hIDX_FERT + 1):(hIDX_FERT+hAG_FERT)
-      for i = 1:hAG_SPAN[ha]
-        births_by_ha[ha-hIDX_FERT] += (pop[t-1, m, FEMALE, a] + pop[t, m, FEMALE, a])/2 * asfr[t, a]
-        a += 1
-      end
-    end
-  end
-  for ha = (hIDX_FERT + 1):hAG_FERT
-    births += births_by_ha[ha-hIDX_FERT]
-  end
+  fertile_pop = sum((last_fem_pop + pop[:, FEMALE, fert_idx])./2 .* mod_data[:asfr][:, t]', dims = 1)
+  births_by_ha = dropdims(fertile_pop * age_binner[fert_idx, (hIDX_FERT + 1):(hIDX_FERT+hAG_FERT)], dims = 1)
+  births = sum(births_by_ha)
   if t + AGE_START < PROJ_YEARS 
-    for g = 1:NG
-      birthslag[(t + AGE_START-1), g] = srb[t, g] * births
-    end
+    mod_data[:birthslag][:, (t + AGE_START-1), :] = mod_data[:srb][:, t] * births
   end
 
-  return births
+  return births, births_by_ha, last_hivpop, last_artpop
 end
 
-function preg_women_prev_one_step(t, pregprev, pop, artpop, births)
+function preg_women_prev_one_step!(mod_data, t, pregprev, pop_ts, pop, hivpop, artpop, births, last_hivpop, last_artpop)
   # Prevalence among pregnant women
   hivbirths = 0.
   for ha = (hIDX_FERT + 1):(hIDX_FERT + hAG_FERT)
     hivn_ha = 0.
     frr_hivpop_ha = 0.
     for a = (hAG_START[ha] + 1):(hAG_START[ha]+hAG_SPAN[ha])
-      hivn_ha += (pop[t-1, HIVN, FEMALE, a] + pop[t, HIVN, FEMALE, a])/2
+      hivn_ha += (pop_ts[t-1, HIVN, FEMALE, a] + pop[HIVN, FEMALE, a])/2
     end
     for hm = 1:hDS
-      frr_hivpop_ha += frr_cd4[t, ha-hIDX_FERT, hm] * (hivpop[t-1, FEMALE, ha, hm]+hivpop[t, FEMALE, ha, hm])/2
-      if t == t_ART_start 
+      frr_hivpop_ha += mod_data[:frr_cd4][hm, ha-hIDX_FERT, t] * (last_hivpop[FEMALE, ha, hm]+hivpop[FEMALE, ha, hm])/2
+      if t == mod_data[:tARTstart] 
         for hu = 1:hTS
-          frr_hivpop_ha += frr_art[t, ha-hIDX_FERT, hm, hu] * artpop[t, FEMALE, ha, hm, hu]/2
+          frr_hivpop_ha += mod_data[:frr_art][hu, hm, ha-hIDX_FERT, t] * artpop[FEMALE, ha, hm, hu]/2
         end
-      elseif t > t_ART_start
+      elseif t > mod_data[:tARTstart]
         for hu = 1:hTS
-          frr_hivpop_ha += frr_art[t, ha-hIDX_FERT, hm, hu] * (artpop[t-1, FEMALE, ha, hm, hu]+artpop[t, FEMALE, ha, hm, hu])/2
+          frr_hivpop_ha += mod_data[:frr_art][hu, hm, ha-hIDX_FERT, t] * (last_artpop[FEMALE, ha, hm, hu]+artpop[FEMALE, ha, hm, hu])/2
         end
       end
     end
@@ -121,5 +111,33 @@ function preg_women_prev_one_step(t, pregprev, pop, artpop, births)
   pregprev[t] = hivbirths/births
   if (t + AGE_START) < PROJ_YEARS
     pregprevlag[t + AGE_START] = pregprev[t]
+  end
+end
+
+function adjust_pop!(mod_data, t, pop, hivpop, artpop)
+  for g = 1:NG
+    a = 1
+    for ha = 1:hAG
+      popadj_ha = 0.
+      hivpop_ha = 0.
+      for i = 1:hAG_SPAN[ha]
+        hivpop_ha += pop[HIVP, g, a]
+        popadjrate_a = popadjust[t, g, a] = mod_data[:targetpop][t, g, a] / (pop[HIVN, g, a] + pop[HIVP, g, a])
+        pop[HIVN, g, a] *= popadjrate_a
+        hpopadj_a = (popadjrate_a-1.0) * pop[HIVP, g, a]
+        popadj_ha += hpopadj_a
+        pop[HIVP, g, a] += hpopadj_a
+        a += 1
+      end
+      popadjrate_ha = hivpop_ha > 0 ? popadj_ha / hivpop_ha : 0.0
+      for hm = 1:hDS
+        hivpop[g, ha, hm] *= 1+popadjrate_ha
+        if t >= mod_data[:tARTstart]
+          for hu = 1:hTS
+            artpop[g, ha, hm, hu] *= 1+popadjrate_ha
+          end
+        end
+      end
+    end
   end
 end

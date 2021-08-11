@@ -43,11 +43,8 @@ test_that("model simulation returns correct prevalence", {
 
 library(JuliaCall)
 julia_source("julia/eppasm.jl")
-bw_fp$eppmodInt <- match(bw_fp$eppmod, c("rtrend", "directincid"), nomatch=0) # 0: r-spline;
-bw_fp$incidmodInt <- match(bw_fp$incidmod, c("eppspectrum"))-1L  # -1 for 0-based indexing
 j_bw_fp <- JuliaObject(bw_fp)
 jmod <- julia_call("simmodJ", j_bw_fp)
-jmod[[14]]
 benchmark(julia_call("simmodJ", j_bw_fp))
 
 pjnz <- system.file("extdata/testpjnz", "Mozambique_Maputo_Cidade2018.PJNZ", package="eppasm")
