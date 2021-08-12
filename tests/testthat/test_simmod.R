@@ -30,6 +30,7 @@ bw_prev_mod <- c(0.00045, 0.00080, 0.0014, 0.00245, 0.00424, 0.00725, 0.01214,
 library(rbenchmark)
 benchmark(simmod(bw_fp))
 benchmark(simmod(bw_fp, VERSION="R"))
+mod <- simmod(bw_fp)
 
 bw_fp$rvec[] <- 0
 bw_fp$iota <- 0
@@ -44,8 +45,8 @@ test_that("model simulation returns correct prevalence", {
 library(JuliaCall)
 julia_source("julia/eppasm.jl")
 j_bw_fp <- JuliaObject(bw_fp)
-jmod <- julia_call("simmodJ", j_bw_fp)
-benchmark(julia_call("simmodJ", j_bw_fp))
+jmod <- julia_call("eppasm.simmodJ", j_bw_fp)
+benchmark(julia_call("eppasm.simmodJ", j_bw_fp))
 
 pjnz <- system.file("extdata/testpjnz", "Mozambique_Maputo_Cidade2018.PJNZ", package="eppasm")
 mpm <- prepare_spec_fit(pjnz, proj.end=2021.5)

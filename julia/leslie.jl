@@ -46,17 +46,17 @@ end
 
 
 data = load("data.rda", convert = true)
-mod_data = data["temp"]
+par = data["temp"]
 
-sx_f = mod_data["Sx"][:,1, :]
-sx_m = mod_data["Sx"][:,2, :]
-asfr = mod_data["asfr"]
-srb = mod_data["srb"][1, :] ./ mod_data["srb"][2, :]
-f_idx = mod_data["ss"]["p.fert.idx"]
+sx_f = par["Sx"][:,1, :]
+sx_m = par["Sx"][:,2, :]
+asfr = par["asfr"]
+srb = par["srb"][1, :] ./ par["srb"][2, :]
+f_idx = par["ss"]["p.fert.idx"]
 
 leslies = make_leslies(sx_m, sx_f, asfr, srb, f_idx)
 
-x =  vcat(mod_data["basepop"][:,1], mod_data["basepop"][:,2])
+x =  vcat(par["basepop"][:,1], par["basepop"][:,2])
 
 function project_pop(x, leslies)
   N = size(leslies)[1]
@@ -70,7 +70,7 @@ function project_pop(x, leslies)
 end
 @time X = project_pop(x, leslies)
 
-x_range = collect(mod_data["ss"]["proj_start"]:(mod_data["ss"]["proj_start"] + mod_data["ss"]["PROJ_YEARS"] - 1))
+x_range = collect(par["ss"]["proj_start"]:(par["ss"]["proj_start"] + par["ss"]["PROJ_YEARS"] - 1))
 y_range = vec([string(i, j) for i = collect(15:80), j = ["m", "f"]])
 Plots.heatmap(x_range, y_range, log10.(X))
 heatmap(X[1:Int(size(X)[1] / 2), :] ./ X[Int(size(X)[1] / 2 + 1):end, :])
