@@ -1,12 +1,12 @@
 
 function disease_treatment!(
   par, pop, hivpop, artpop, grad, t, hts, births_by_ha, hivdeaths_ha, everARTelig_idx,
-  anyelig_idx, cd4elig_idx, age_binner
+  anyelig_idx, cd4elig_idx, age_binner, out_dict
 )
   # On-ART deaths
-  deaths = permutedims(par[:art_mort], (4, 3, 2, 1)) .* artpop
+  deaths = par[:art_mort] .* artpop
   hivdeaths_ha .+= DT .* dropdims(sum(deaths, dims = (3, 4)), dims = (3, 4))
-  aidsdeaths_art[t, :, :, :, :] .+= DT .* deaths
+  out_dict[:aidsdeaths_art][t, :, :, :, :] .+= DT .* deaths
   gradART = -deaths
   # ART time-since initiation progression
   art_prog = artpop[:, :, :, 1:end - 1] ./ h_art_stage_dur
@@ -19,11 +19,11 @@ function disease_treatment!(
   Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig = gettxelig(t, hivpop, par, artpop, gradART, age_binner, pop, births_by_ha, cd4elig_idx)
 
   ## ART initation
-  initart!(hivpop, hts, par, t, anyelig_idx, grad, artinit, gradART, Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig)
+  initart!(hivpop, hts, par, t, anyelig_idx, grad, gradART, Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig, out_dict)
   artpop = artpop + DT .* gradART
 end
 
-function initart!(hivpop, hts, par, t, anyelig_idx, grad, artinit, gradART, Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig)
+function initart!(hivpop, hts, par, t, anyelig_idx, grad, gradART, Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig, out_dict)
   lag = DT * (hts + 1) < 0.5 ? 1 : 0
   same = par[:art15plus_isperc][:, t-1-lag] == par[:art15plus_isperc][:, t-lag]
   artnum_init = artnuminit.(hts, same, par[:art15plus_isperc][:, t-lag], par[:art15plus_num][:, t - lag], 
@@ -45,18 +45,18 @@ function initart!(hivpop, hts, par, t, anyelig_idx, grad, artinit, gradART, Xart
   # end
   grad[:, hIDX_15PLUS:hAG, anyelig_idx:hDS] .-= artinit_hahm / DT
   gradART[:, hIDX_15PLUS:hAG, anyelig_idx:hDS, ART0MOS] .+= artinit_hahm / DT
-  artinit[t, :, hIDX_15PLUS:hAG, anyelig_idx:hDS] .+= artinit_hahm 
+  out_dict[:artinit][t, :, hIDX_15PLUS:hAG, anyelig_idx:hDS] .+= artinit_hahm 
 end
 
 function gettxelig(t, hivpop, par, artpop, gradART, age_binner, pop, births_by_ha, cd4elig_idx)
   # Determime number on ART and eligibile
-  prop_elig = [(hm >= cd4elig_idx) ? 1.0 : (hm >= hIDX_CD4_350) ? 1.0 - (1.0-specpop_percelig[t])*(1.0-who34percelig) : specpop_percelig[t] for hm = 1:hDS]
+  prop_elig = [(hm >= cd4elig_idx) ? 1.0 : (hm >= hIDX_CD4_350) ? 1.0 - (1.0-par[:specpop_percelig][t])*(1.0-par[:who34percelig]) : par[:specpop_percelig][t] for hm = 1:hDS]
   artelig = permutedims(prop_elig .* permutedims(hivpop, (3,1,2)), (2, 3, 1))
   Xartelig_15plus = sum(artelig)
   expect_mort_artelig15plus = sum(par[:cd4_mort] .* artelig)
   Xart_15plus = sum(artpop + DT * gradART)
   # Eligible pregnant women
-  if pw_artelig[t] > 0
+  if par[:pw_artelig][t] > 0
     p_fert_idx = pIDX_FERT:(pIDX_FERT + pAG_FERT - 1)
     h_fert_idx = (hIDX_FERT + 1):(hIDX_FERT + hAG_FERT)
     neg_women =  (age_binner[p_fert_idx, :]' * pop[HIVN, FEMALE, p_fert_idx])[h_fert_idx]

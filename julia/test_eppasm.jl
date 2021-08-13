@@ -2,10 +2,11 @@ module Tst
   include("eppasm.jl")
   using .eppasm
   using Plots
+  using BenchmarkTools
   plot_diagnostics = false
   par = prep_par()
   par[:art15plus_num] .= par[:art15plus_num] * 5
-  @time out = simmodJ(par)
+  @time simmodJ(par)
 
   par = prep_par()
   @time out = simmodJ(par)

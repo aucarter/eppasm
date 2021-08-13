@@ -1,22 +1,21 @@
-function hiv_mod_all(par, t, anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeaths_noart, everARTelig_idx, births_by_ha, pop, age_binner)
+function hiv_mod_all(par, t, anyelig_idx, cd4elig_idx, artpop, hivpop, everARTelig_idx, births_by_ha, pop, age_binner, grad, out_dict)
   for hts = 0:(HIVSTEPS_PER_YEAR - 1)
     ts = (t - 2) * HIVSTEPS_PER_YEAR + hts + 1
     if par[:proj_steps][ts] >= par[:tsEpidemicStart]
-      hiv_mod_one_step!(par, t, hts, ts,  anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeaths_noart, everARTelig_idx, births_by_ha, pop, age_binner)
+      hiv_mod_one_step!(par, t, hts, ts,  anyelig_idx, cd4elig_idx, artpop, hivpop, everARTelig_idx, births_by_ha, pop, age_binner, grad, out_dict)
     end
   end
 end
   
-function hiv_mod_one_step!(par, t, hts, ts, anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeaths_noart, everARTelig_idx, births_by_ha, pop, age_binner)
+function hiv_mod_one_step!(par, t, hts, ts, anyelig_idx, cd4elig_idx, artpop, hivpop, everARTelig_idx, births_by_ha, pop, age_binner, grad, out_dict)
   hivdeaths_ha = zeros(NG, hAG)
-  grad = zeros(NG, hAG, hDS)
   
-  disease_prog_mort!(par, hivpop, hivdeaths_ha, grad, aidsdeaths_noart, t, everARTelig_idx)
-  disease_transmission!(par, pop, hivpop, artpop, grad, t, hts, ts, age_binner)
+  disease_prog_mort!(par, hivpop, hivdeaths_ha, grad, t, out_dict)
+  disease_transmission!(par, pop, artpop, grad, t, hts, ts, age_binner, out_dict)
   if t >= par[:tARTstart]
     disease_treatment!(
       par, pop, hivpop, artpop, grad, t, hts, births_by_ha, hivdeaths_ha, everARTelig_idx,
-      anyelig_idx, cd4elig_idx, age_binner
+      anyelig_idx, cd4elig_idx, age_binner, out_dict
     )
   end
   hivpop = hivpop + DT .* grad
@@ -24,22 +23,22 @@ function hiv_mod_one_step!(par, t, hts, ts, anyelig_idx, cd4elig_idx, artpop, hi
   hivqx_ha = hivdeaths_ha ./ hivpop_ha
   replace!(hivqx_ha, NaN=>0.)
   hivqx_all_age = (hivqx_ha * age_binner')
-  hivdeaths[t, :, :] = pop[HIVP, :, :] .*  hivqx_all_age
+  out_dict[:hivdeaths][t, :, :] = pop[HIVP, :, :] .*  hivqx_all_age
   pop[HIVP, :, :] .*= 1.0 .- hivqx_all_age
 end
 
   
-function disease_prog_mort!(par, hivpop, hivdeaths_ha, grad, aidsdeaths_noart, t, everARTelig_idx)
+function disease_prog_mort!(par, hivpop, hivdeaths_ha, grad, t, out_dict)
   prog = par[:cd4_prog] .* hivpop[:, :, 1:end - 1]
-  grad[:, :, 1:end - 1] -= prog
+  grad[:, :, 1:end - 1] = prog
   grad[:, :, 2:end] += prog 
   deaths = par[:cd4_mort] .* hivpop
-  aidsdeaths_noart[t, :, :, :] .+= DT .* deaths
+  out_dict[:aidsdeaths_noart][t, :, :, :] .+= DT .* deaths
   hivdeaths_ha .+= DT .* dropdims(sum(deaths, dims = 3), dims = 3)
   grad = grad - deaths
 end
 
-function disease_transmission!(par, pop, hivpop, artpop, grad, t, hts, ts, age_binner)
+function disease_transmission!(par, pop, artpop, grad, t, hts, ts, age_binner, out_dict)
   if eppmod != EPP_DIRECTINCID
     if eppmod == EPP_RSPLINE
       nothing
@@ -50,12 +49,13 @@ function disease_transmission!(par, pop, hivpop, artpop, grad, t, hts, ts, age_b
 
     if incidmod == INCIDMOD_EPPSPEC 
       infections_ts, prevcurr = calc_infections_eppspectrum!(
-        par, pop, hivpop, artpop, rvec[ts], (par[:proj_steps][ts] == par[:tsEpidemicStart]) ? par[:iota] : 0.0,
-        t, hts, ts)
+        par, pop, artpop, par[:rvec][ts], (par[:proj_steps][ts] == par[:tsEpidemicStart]) ? par[:iota] : 0.0,
+        t, hts, ts, out_dict)
     end
-    global prev15to49_ts[ts] = prevcurr
+    out_dict[:prev15to49_ts][ts] = prevcurr
     infections_a_dt = zeros(NG, pAG)
     infections_a_dt = DT .* infections_ts
+    out_dict[:infections][t, :, :] .+= infections_a_dt
     pop[HIVN, :, :] .-=  infections_a_dt
     pop[HIVP, :, :] .+=  infections_a_dt
     infections_ha = infections_a_dt * age_binner
@@ -63,17 +63,13 @@ function disease_transmission!(par, pop, hivpop, artpop, grad, t, hts, ts, age_b
   end
 end
 
-function calc_infections_eppspectrum!(par, pop, hivpop, artpop, r_ts, iota, t, hts, ts)
+function calc_infections_eppspectrum!(par, pop, artpop, r_ts, iota, t, hts, ts, out_dict)
   Xhivn_g = zeros(NG)
   Xhivn_incagerr = zeros(NG)
   Xhivp_noart = 0.0
   Xart = 0.0
   Xhivn_g .= dropdims(sum(pop[HIVN, :, idx_15_49], dims = 2), dims = 2)
-  Xhivn_incagerr .= dropdims(
-    sum(
-      par[:incrr_age][t, :, idx_15_49] .* pop[HIVN, :, idx_15_49], dims = 2
-    ), dims = 2
-  )
+  Xhivn_incagerr .= dropdims(sum(par[:incrr_age][t, :, idx_15_49] .* pop[HIVN, :, idx_15_49], dims = 2), dims = 2)
   Xhivp_noart = sum(pop[HIVP, :, idx_15_49])
   Xart = sum(artpop)
   # TODO: Implement this stuff for the edges
@@ -115,13 +111,13 @@ function calc_infections_eppspectrum!(par, pop, hivpop, artpop, r_ts, iota, t, h
   Xtot = Xhivn + Xhivp_noart + Xart
   prevcurr = (Xhivp_noart + Xart) / Xtot
 
-  incrate15to49_ts[ts] = r_ts * (Xhivp_noart + par[:relinfectART] * Xart) / Xtot + iota
+  out_dict[:incrate15to49_ts][ts] = r_ts * (Xhivp_noart + par[:relinfectART] * Xart) / Xtot + iota
 
 
   # incidence by sex
   incrate15to49_g = zeros(NG)
-  incrate15to49_g[MALE] = incrate15to49_ts[ts] * (Xhivn_g[MALE]+Xhivn_g[FEMALE]) / (Xhivn_g[MALE] + par[:incrr_sex][t]*Xhivn_g[FEMALE])
-  incrate15to49_g[FEMALE] = incrate15to49_ts[ts] * par[:incrr_sex][t]*(Xhivn_g[MALE]+Xhivn_g[FEMALE]) / (Xhivn_g[MALE] + par[:incrr_sex][t]*Xhivn_g[FEMALE])
+  incrate15to49_g[MALE] = out_dict[:incrate15to49_ts][ts] * (Xhivn_g[MALE]+Xhivn_g[FEMALE]) / (Xhivn_g[MALE] + par[:incrr_sex][t]*Xhivn_g[FEMALE])
+  incrate15to49_g[FEMALE] = out_dict[:incrate15to49_ts][ts] * par[:incrr_sex][t]*(Xhivn_g[MALE]+Xhivn_g[FEMALE]) / (Xhivn_g[MALE] + par[:incrr_sex][t]*Xhivn_g[FEMALE])
 
   # annualized infections by age and sex
   infections_ts = zeros(NG, pAG)

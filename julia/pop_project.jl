@@ -1,4 +1,4 @@
-function pop_project_one_step!(par, t, pop, hivpop, artpop, age_binner, max_age_binner)
+function pop_project_one_step!(par, t, pop, hivpop, artpop, age_binner, max_age_binner, out_dict)
   ## Population projection
   # Calculate probability of aging from one HIV positive age bin to the next
   if sum(pop[HIVP, :, :]) > 0
@@ -31,28 +31,28 @@ function pop_project_one_step!(par, t, pop, hivpop, artpop, age_binner, max_age_
   # Lagged birth to youngest age group
   entrant_prev = par[:entrantprev]'[t, :]
   # else
-  #   entrant_prev = pregprevlag[t-1] * verttrans_lag[t-1] * paedsurv_lag[t-1]
+  #   entrant_prev = out_dict[:pregprevlag][t-1] * par[:verttrans_lag][t-1] * par[:paedsurv_lag][t-1]
   # end
 
   if par[:popadjust]
     @. pop[HIVN, :, 1] =  par[:entrantpop]'[t - 1, :] * (1.0-entrant_prev)
     paedsurv = par[:entrantpop]'[t - 1, :] .* entrant_prev
   else
-    @. pop[HIVN, :, 1] = par[:birthslag]'[t-1, g] * cumsurv[t-1, g] * (1.0-entrant_prev / paedsurv_lag[t-1]) + cumnetmigr[t-1, g] * (1.0-pregprevlag[t-1] * netmig_hivprob)
+    @. pop[HIVN, :, 1] = par[:birthslag]'[t-1, g] * cumsurv[t-1, g] * (1.0-entrant_prev / par[:paedsurv_lag][t-1]) + cumnetmigr[t-1, g] * (1.0-out_dict[:pregprevlag][t-1] * netmig_hivprob)
     @. paedsurv = par[:birthslag]'[t-1, :] * cumsurv[t-1, g] * entrant_prev + cumnetmigr[t-1, g] * entrant_prev    
   end
 
   pop[HIVP, :, 1] = paedsurv
-  entrantprev_out[t] = sum(pop[HIVP, :, 1]) / sum(pop[:, :, 1])
+  out_dict[:entrantprev_out][t] = sum(pop[HIVP, :, 1]) / sum(pop[:, :, 1])
 
   first_remain = (1 .- hiv_ag_prob[:, 1]) .* last_hivpop[:, 1, :]
-  off_art_entrants = permutedims(par[:paedsurv_cd4dist], (3, 2, 1))[t, :, :] .* ((1.0 .- par[:entrantartcov]'[t, :]) .* paedsurv)
+  off_art_entrants = par[:paedsurv_cd4dist][t, :, :] .* ((1.0 .- par[:entrantartcov]'[t, :]) .* paedsurv)
   hivpop[:, 1, :] = first_remain + off_art_entrants
   if t > par[:tARTstart]
     # Remaining in the first age group
     @. artpop[:, 1, :, :] = (1-hiv_ag_prob[:, 1]) * last_artpop[:, 1, :, :]
     # Ageing in on treatment
-    artpop[:, 1, :, :] .+= paedsurv .* permutedims(par[:paedsurv_artcd4dist], (4, 3, 2, 1))[t, :, :, :] .* par[:entrantartcov]'[t, :]
+    artpop[:, 1, :, :] .+= paedsurv .* par[:paedsurv_artcd4dist][t, :, :, :] .* par[:entrantartcov]'[t, :]
   end
 
   # non-HIV mortality and migration
@@ -75,7 +75,7 @@ function pop_project_one_step!(par, t, pop, hivpop, artpop, age_binner, max_age_
   if(t > par[:tARTstart])
     artpop[:, :, :, :] .*= 1 .+ deathmigrate
   end
-  natdeaths[t, :, :] .= ndeaths .+ hdeaths
+  out_dict[:natdeaths][t, :, :] .= ndeaths .+ hdeaths
 
   # Fertility
   fertile_pop = sum((last_fem_pop + pop[:, FEMALE, fert_idx])./2 .* par[:asfr][:, t]', dims = 1)
@@ -88,14 +88,14 @@ function pop_project_one_step!(par, t, pop, hivpop, artpop, age_binner, max_age_
   return births, births_by_ha, last_hivpop, last_artpop
 end
 
-function preg_women_prev_one_step!(par, t, pregprev, pop_ts, pop, hivpop, artpop, births, last_hivpop, last_artpop)
+function preg_women_prev_one_step!(par, t, pop, hivpop, artpop, births, last_hivpop, last_artpop, out_dict)
   # Prevalence among pregnant women
   hivbirths = 0.
   for ha = (hIDX_FERT + 1):(hIDX_FERT + hAG_FERT)
     hivn_ha = 0.
     frr_hivpop_ha = 0.
     for a = (hAG_START[ha] + 1):(hAG_START[ha]+hAG_SPAN[ha])
-      hivn_ha += (pop_ts[t-1, HIVN, FEMALE, a] + pop[HIVN, FEMALE, a])/2
+      hivn_ha += (out_dict[:pop][t-1, HIVN, FEMALE, a] + pop[HIVN, FEMALE, a])/2
     end
     for hm = 1:hDS
       frr_hivpop_ha += par[:frr_cd4][t, ha-hIDX_FERT, hm] * (last_hivpop[FEMALE, ha, hm]+hivpop[FEMALE, ha, hm])/2
@@ -111,13 +111,13 @@ function preg_women_prev_one_step!(par, t, pregprev, pop_ts, pop, hivpop, artpop
     end
   end
 
-  pregprev[t] = hivbirths/births
+  out_dict[:pregprev][t] = hivbirths/births
   if (t + AGE_START) < PROJ_YEARS
-    pregprevlag[t + AGE_START] = pregprev[t]
+    out_dict[:pregprevlag][t + AGE_START] = hivbirths/births
   end
 end
 
-function adjust_pop!(par, t, pop, hivpop, artpop)
+function adjust_pop!(par, t, pop, hivpop, artpop, out_dict)
   for g = 1:NG
     a = 1
     for ha = 1:hAG
@@ -125,7 +125,7 @@ function adjust_pop!(par, t, pop, hivpop, artpop)
       hivpop_ha = 0.
       for i = 1:hAG_SPAN[ha]
         hivpop_ha += pop[HIVP, g, a]
-        popadjrate_a = popadjust[t, g, a] = par[:targetpop][t, g, a] / (pop[HIVN, g, a] + pop[HIVP, g, a])
+        popadjrate_a = out_dict[:popadjust][t, g, a] = par[:targetpop][t, g, a] / (pop[HIVN, g, a] + pop[HIVP, g, a])
         pop[HIVN, g, a] *= popadjrate_a
         hpopadj_a = (popadjrate_a-1.0) * pop[HIVP, g, a]
         popadj_ha += hpopadj_a
