@@ -4,10 +4,12 @@ module Tst
   using Plots
   plot_diagnostics = false
   par = prep_par()
+  par[:art15plus_num] .= par[:art15plus_num] * 5
   @time out = simmodJ(par)
 
   par = prep_par()
   @time out = simmodJ(par)
+  simmodJ(par)
 
   correct_prev = [0.00045, 0.00080, 0.0014, 0.00245, 0.00424, 0.00725, 0.01214,
   0.01985, 0.03147, 0.04804, 0.07013, 0.0975, 0.12857, 0.16083,
@@ -19,16 +21,22 @@ module Tst
   println(out[:prev15to49][11:53] == correct_prev)
   println(round.(out[:prev15to49], digits = 3))
 
-  plot(out[:prev15to49][11:53])
-  plot!(correct_prev)
+  # artpop = dropdims(sum(out[:artpop], dims = (2, 3,  4, 5)), dims = (2, 3, 4, 5))
+  # println("Input:", round.(par[:art15plus_num], digits = 3))
+  # println("Output:", round.(artpop, digits = 3))
+  
+
+
+  display(plot(out[:prev15to49][11:53]))
+  display(plot!(correct_prev))
 
 # par = prep_par()
 # par[:art15plus_num] .= 0
 # @time out = simmodJ(par)
 
 # if plot_diagnostics
-#   plot_pop_ta = sum(out[:pop], dims = (2, 3))[:, 1, 1, :]
-#   heatmap(plot_pop_ta')
+  # plot_pop_ta = sum(out[:pop], dims = (2, 3))[:, 1, 1, :]
+  # print(plot_pop_ta)
 # end
 # println(round.(out[:prev15to49], digits = 3))
 # artpop = dropdims(sum(out[:artpop], dims = (2, 4, 5)), dims = (2, 4, 5))

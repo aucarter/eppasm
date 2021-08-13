@@ -167,10 +167,10 @@ function prep_inputs!(par)
   if(size(par[:cd4_prog])[1] != 2)
     par[:cd4_prog] = permutedims(par[:cd4_prog], (3, 2, 1))
   end
-  if(size(par[:frr_cd4])[1] != 66)
+  if(size(par[:frr_cd4])[1] != 53)
     par[:frr_cd4] = permutedims(par[:frr_cd4], (3, 2, 1))
   end
-  if(size(par[:frr_art])[1] != 66)
+  if(size(par[:frr_art])[1] != 53)
     par[:frr_art] = permutedims(par[:frr_art], (4, 3, 2, 1))
   end
   if(size(par[:incrr_age])[1] != 53)

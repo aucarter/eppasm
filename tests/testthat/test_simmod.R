@@ -29,7 +29,8 @@ bw_prev_mod <- c(0.00045, 0.00080, 0.0014, 0.00245, 0.00424, 0.00725, 0.01214,
 
 library(rbenchmark)
 benchmark(simmod(bw_fp))
-benchmark(simmod(bw_fp, VERSION="R"))
+# benchmark(simmod(bw_fp, VERSION="R"))
+bw_fp$art15plus_num[] <- 0
 mod <- simmod(bw_fp)
 
 bw_fp$rvec[] <- 0

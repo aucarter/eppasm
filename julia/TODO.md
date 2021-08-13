@@ -1,0 +1,2 @@
+- Look into the transition from counts to percent (there are some zeros coming in)
+- Implement edges stuff in the calculation of infections

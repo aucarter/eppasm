@@ -2,13 +2,12 @@ function hiv_mod_all(par, t, anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeath
   for hts = 0:(HIVSTEPS_PER_YEAR - 1)
     ts = (t - 2) * HIVSTEPS_PER_YEAR + hts + 1
     if par[:proj_steps][ts] >= par[:tsEpidemicStart]
-      hiv_mod_one_step!(par, t, hts, anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeaths_noart, everARTelig_idx, births_by_ha, pop, age_binner)
+      hiv_mod_one_step!(par, t, hts, ts,  anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeaths_noart, everARTelig_idx, births_by_ha, pop, age_binner)
     end
   end
 end
   
-function hiv_mod_one_step!(par, t, hts, anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeaths_noart, everARTelig_idx, births_by_ha, pop, age_binner)
-  ts = (t - 2) * HIVSTEPS_PER_YEAR + hts + 1
+function hiv_mod_one_step!(par, t, hts, ts, anyelig_idx, cd4elig_idx, artpop, hivpop, aidsdeaths_noart, everARTelig_idx, births_by_ha, pop, age_binner)
   hivdeaths_ha = zeros(NG, hAG)
   grad = zeros(NG, hAG, hDS)
   
@@ -75,7 +74,7 @@ function calc_infections_eppspectrum!(par, pop, hivpop, artpop, r_ts, iota, t, h
       par[:incrr_age][t, :, idx_15_49] .* pop[HIVN, :, idx_15_49], dims = 2
     ), dims = 2
   )
-  Xhivp_noart = sum(hivpop)
+  Xhivp_noart = sum(pop[HIVP, :, idx_15_49])
   Xart = sum(artpop)
   # TODO: Implement this stuff for the edges
   # for g = 1:NG

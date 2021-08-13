@@ -20,11 +20,33 @@ function disease_treatment!(
 
   ## ART initation
   initart!(hivpop, hts, par, t, anyelig_idx, grad, artinit, gradART, Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig)
-
-  gradART .= 0.
   artpop = artpop + DT .* gradART
 end
 
+function initart!(hivpop, hts, par, t, anyelig_idx, grad, artinit, gradART, Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig)
+  lag = DT * (hts + 1) < 0.5 ? 1 : 0
+  same = par[:art15plus_isperc][:, t-1-lag] == par[:art15plus_isperc][:, t-lag]
+  artnum_init = artnuminit.(hts, same, par[:art15plus_isperc][:, t-lag], par[:art15plus_num][:, t - lag], 
+    par[:art15plus_num][:, t - 1 - lag], Xart_15plus, Xartelig_15plus)
+  # CD4 and age at ART initiation
+  if Bool(par[:med_cd4init_input][t])
+  elseif par[:art_alloc_method] == 4 # lowest CD4 first
+  else # use a mixture of eligibility and expected mortality for initiation distribution
+    artinit_hahm = splitart.(
+      artnum_init, artelig[:, hIDX_15PLUS:hAG, anyelig_idx:hDS], par[:art_alloc_mxweight][1], 
+      Xartelig_15plus, par[:cd4_mort][:, hIDX_15PLUS:hAG, anyelig_idx:hDS],
+      expect_mort_artelig15plus, hivpop[:, hIDX_15PLUS:hAG, anyelig_idx:hDS], 
+      grad[:, hIDX_15PLUS:hAG, anyelig_idx:hDS]
+    )
+  end
+  # TODO: Remove after solving eligibility issue
+  # if hts == 0
+  #   println(sum(artelig) / artnum_init)
+  # end
+  grad[:, hIDX_15PLUS:hAG, anyelig_idx:hDS] .-= artinit_hahm / DT
+  gradART[:, hIDX_15PLUS:hAG, anyelig_idx:hDS, ART0MOS] .+= artinit_hahm / DT
+  artinit[t, :, hIDX_15PLUS:hAG, anyelig_idx:hDS] .+= artinit_hahm 
+end
 
 function gettxelig(t, hivpop, par, artpop, gradART, age_binner, pop, births_by_ha, cd4elig_idx)
   # Determime number on ART and eligibile
@@ -77,25 +99,4 @@ function splitart(artnum_init, artelig, mxweight, Xartelig_15plus, cd4_mort, exp
     artinit_hahm = hivpop + DT * grad
   end
   return artinit_hahm
-end
-
-function initart!(hivpop, hts, par, t, anyelig_idx, grad, artinit, gradART, Xartelig_15plus, Xart_15plus, expect_mort_artelig15plus, artelig)
-  lag = DT * (hts + 1) < 0.5 ? 1 : 0
-  same = par[:art15plus_isperc][:, t-1-lag] == par[:art15plus_isperc][:, t-lag]
-  artnum_init = artnuminit.(hts, same, par[:art15plus_isperc][:, t-lag], par[:art15plus_num][:, t - lag], 
-    par[:art15plus_num][:, t - 1 - lag], Xart_15plus, Xartelig_15plus)
-  # CD4 and age at ART initiation
-  if Bool(par[:med_cd4init_input][t])
-  elseif par[:art_alloc_method] == 4 # lowest CD4 first
-  else # use a mixture of eligibility and expected mortality for initiation distribution
-    artinit_hahm = splitart.(
-      artnum_init, artelig[:, hIDX_15PLUS:hAG, anyelig_idx:hDS], par[:art_alloc_mxweight][1], 
-      Xartelig_15plus, par[:cd4_mort][:, hIDX_15PLUS:hAG, anyelig_idx:hDS],
-      expect_mort_artelig15plus, hivpop[:, hIDX_15PLUS:hAG, anyelig_idx:hDS], 
-      grad[:, hIDX_15PLUS:hAG, anyelig_idx:hDS]
-    )
-  end
-  grad[:, hIDX_15PLUS:hAG, anyelig_idx:hDS] .-= artinit_hahm / DT
-  gradART[:, hIDX_15PLUS:hAG, anyelig_idx:hDS, ART0MOS] .+= artinit_hahm / DT
-  artinit[t, :, hIDX_15PLUS:hAG, anyelig_idx:hDS] .+= artinit_hahm 
 end

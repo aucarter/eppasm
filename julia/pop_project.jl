@@ -2,6 +2,7 @@ function pop_project_one_step!(par, t, pop, hivpop, artpop, age_binner, max_age_
   ## Population projection
   # Calculate probability of aging from one HIV positive age bin to the next
   if sum(pop[HIVP, :, :]) > 0
+    hiv_ag_prob = zeros()
     hiv_ag_prob = (pop[HIVP, :, :] * max_age_binner) ./ (pop[HIVP, :, :] * age_binner)
     replace!(hiv_ag_prob, NaN=>0.)
     hiv_ag_prob[:, end] .= 0
