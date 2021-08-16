@@ -1,44 +1,41 @@
-function hiv_mod_all(β, x, t, anyelig_idx, cd4elig_idx, everARTelig_idx, births_by_ha, age_binner, grad, out_dict)
+function hiv_mod_all(β, x, t, births_by_ha, out_dict)
   for hts = 0:(HIVSTEPS_PER_YEAR - 1)
     ts = (t - 2) * HIVSTEPS_PER_YEAR + hts + 1
     if β[:proj_steps][ts] >= β[:tsEpidemicStart]
-      hiv_mod_one_step!(β, x, t, hts, ts, anyelig_idx, cd4elig_idx, everARTelig_idx, births_by_ha, age_binner, grad, out_dict)
+      hiv_mod_one_step!(β, x, t, hts, ts, births_by_ha, out_dict)
     end
   end
 end
   
-function hiv_mod_one_step!(β, x, t, hts, ts, anyelig_idx, cd4elig_idx, everARTelig_idx, births_by_ha, age_binner, grad, out_dict)
+function hiv_mod_one_step!(β, x, t, hts, ts, births_by_ha, out_dict)
   hivdeaths_ha = zeros(NG, hAG)
   
-  disease_prog_mort!(β, x, hivdeaths_ha, grad, t, out_dict)
-  disease_transmission!(β, x, grad, t, hts, ts, age_binner, out_dict)
+  disease_prog_mort!(β, x, hivdeaths_ha, t, out_dict)
+  disease_transmission!(β, x, t, hts, ts, out_dict)
   if t >= β[:tARTstart]
-    disease_treatment!(
-      β, x, grad, t, hts, births_by_ha, hivdeaths_ha, everARTelig_idx,
-      anyelig_idx, cd4elig_idx, age_binner, out_dict
-    )
+    disease_treatment!(β, x, t, hts, births_by_ha, hivdeaths_ha, out_dict)
   end
-  x[:hivpop] = x[:hivpop] + DT .* grad
-  hivpop_ha = x[:pop][HIVP, :, :] * age_binner
+  x[:hivpop] = x[:hivpop] + DT .* x[:grad]
+  hivpop_ha = x[:pop][HIVP, :, :] * β[:age_binner]
   hivqx_ha = hivdeaths_ha ./ hivpop_ha
   replace!(hivqx_ha, NaN=>0.)
-  hivqx_all_age = (hivqx_ha * age_binner')
+  hivqx_all_age = (hivqx_ha * β[:age_binner]')
   out_dict[:hivdeaths][t, :, :] = x[:pop][HIVP, :, :] .*  hivqx_all_age
   x[:pop][HIVP, :, :] .*= 1.0 .- hivqx_all_age
 end
 
   
-function disease_prog_mort!(β, x, hivdeaths_ha, grad, t, out_dict)
+function disease_prog_mort!(β, x, hivdeaths_ha, t, out_dict)
   prog = β[:cd4_prog] .* x[:hivpop][:, :, 1:end - 1]
-  grad[:, :, 1:end - 1] = prog
-  grad[:, :, 2:end] += prog 
+  x[:grad][:, :, 1:end - 1] = prog
+  x[:grad][:, :, 2:end] += prog 
   deaths = β[:cd4_mort] .* x[:hivpop]
   out_dict[:aidsdeaths_noart][t, :, :, :] .+= DT .* deaths
   hivdeaths_ha .+= DT .* dropdims(sum(deaths, dims = 3), dims = 3)
-  grad = grad - deaths
+  x[:grad] .= x[:grad] - deaths
 end
 
-function disease_transmission!(β, x, grad, t, hts, ts, age_binner, out_dict)
+function disease_transmission!(β, x, t, hts, ts, out_dict)
   if eppmod != EPP_DIRECTINCID
     if eppmod == EPP_RSPLINE
       nothing
@@ -58,8 +55,8 @@ function disease_transmission!(β, x, grad, t, hts, ts, age_binner, out_dict)
     out_dict[:infections][t, :, :] .+= infections_a_dt
     x[:pop][HIVN, :, :] .-=  infections_a_dt
     x[:pop][HIVP, :, :] .+=  infections_a_dt
-    infections_ha = infections_a_dt * age_binner
-    grad .+= infections_ha .* β[:cd4_initdist]
+    infections_ha = infections_a_dt * β[:age_binner]
+    x[:grad] .+= infections_ha .* β[:cd4_initdist]
   end
 end
 
@@ -126,9 +123,9 @@ function calc_infections_eppspectrum!(β, x, r_ts, iota, t, hts, ts, out_dict)
     error("Current prevalence is nan")
   end
 
-  if sum(infections_ts .< -1000) > 0
-    error("Negative infections")
-  end
+  # if sum(infections_ts .< -1000) > 0
+  #   error("Really negative infections")
+  # end
 
   return infections_ts, prevcurr
 end

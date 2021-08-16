@@ -4,12 +4,12 @@ module Tst
   using Plots
   using BenchmarkTools
   plot_diagnostics = true
-  β = prep_β()
-  @time simmodJ(β)
+  data = pull_data()
+  @time simmodJ(data)
 
-  β = prep_β()
-  @time out = simmodJ(β)
-  simmodJ(β)
+  data = pull_data()
+  @time out = simmodJ(data)
+  simmodJ()
 
   correct_prev = [0.00045, 0.00080, 0.0014, 0.00245, 0.00424, 0.00725, 0.01214,
   0.01985, 0.03147, 0.04804, 0.07013, 0.0975, 0.12857, 0.16083,
@@ -41,8 +41,9 @@ if plot_diagnostics
   display(heatmap(plot_pop_ta'))
 end
 # println(round.(out[:prev15to49], digits = 3))
-# artpop = dropdims(sum(out[:artpop], dims = (2, 4, 5)), dims = (2, 4, 5))
+artpop = dropdims(sum(out[:artpop], dims = (2, 3, 4, 5)), dims = (2, 3, 4, 5))
 # hivpop = dropdims(sum(out[:hivpop], dims = (2, 4)), dims = (2, 4))
 # heatmap(hivpop')
-# heatmap(artpop')# plot!(artpop)
+display(plot(artpop))
+display(plot!(dropdims(sum(data[:art15plus_num], dims = 1), dims = 1)))
 end
