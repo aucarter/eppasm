@@ -1,8 +1,7 @@
 module eppasm
-export simmodJ, prep_par
+export simmodJ, prep_β
 
 using LinearAlgebra
-using RCall
 using Serialization
 
 include("pop_project.jl")
@@ -47,9 +46,21 @@ const eppmod = 0
 const incidmod = 0
 const idx_15_49 = pIDX_15TO49:(pIDX_15TO49 + pAG_15TO49 - 1)
 const h_idx_15_49 = (hIDX_15TO49 + 1):(hIDX_15TO49 + hAG_15TO49 + 1)
+const fert_idx = pIDX_FERT:(pIDX_FERT + pAG_FERT - 1)
 
-function prep_par()
-  # par = rcopy(R"""
+function simmodJ(β = nothing)::Dict
+  if β === nothing
+    β = prep_β()
+  end
+  β
+  prep_inputs!(β)
+  out_dict = run_sim!(β)
+  
+  return out_dict
+end
+
+function prep_β()
+  # β = rcopy(R"""
   # library(eppasm)
   # pjnz <- system.file("extdata/testpjnz", "Botswana2018.PJNZ", package="eppasm")
   # bw <- prepare_spec_fit(pjnz, proj.end=2022.5)
@@ -63,48 +74,59 @@ function prep_par()
   #               -0.00307437171215574, 0.0114118307148102, 0.00760958379603691, 0.02,
   #               2.24103194827232, -0.0792123921862689, -5.01917961803606, 0.359444135205712,
   #               -6.10051517060137)
-  # param <- fnCreateParam(bw_theta, bw_fp)
-  # bw_fp <- update(bw_fp, list=param)
+  # βam <- fnCreateParam(bw_theta, bw_fp)
+  # bw_fp <- update(bw_fp, list=βam)
   # bw_fp
   # """)
-  par  = deserialize("test")
-  return par
+  β = deserialize("test")
+  return β
 end
 
-function sim_one!(t, par, pop, hivpop, artpop,
+function sim_one!(t, β, x,
   everARTelig_idx, age_binner, max_age_binner, grad, out_dict)
 
   # Project forward the population
-  births, births_by_ha, last_hivpop, last_artpop = pop_project_one_step!(par, t, pop, hivpop, artpop,  age_binner, max_age_binner, out_dict)
+  births, births_by_ha, last_hivpop, last_artpop = pop_project_one_step!(β, t, x, age_binner, max_age_binner, out_dict)
   ## HIV model simulation
-  cd4elig_idx = par[:artcd4elig_idx][t] 
-  anyelig_idx = (par[:specpop_percelig][t] > 0 || par[:pw_artelig][t] > 0) ? 1 : (par[:who34percelig] > 0) ? hIDX_CD4_350 : cd4elig_idx
+  cd4elig_idx = β[:artcd4elig_idx][t] 
+  anyelig_idx = (β[:specpop_percelig][t] > 0 || β[:pw_artelig][t] > 0) ? 1 : (β[:who34percelig] > 0) ? hIDX_CD4_350 : cd4elig_idx
   everARTelig_idx = (anyelig_idx < everARTelig_idx) ? anyelig_idx : everARTelig_idx
-  if par[:proj_steps][(t - 2) * HIVSTEPS_PER_YEAR + 1] >= par[:tsEpidemicStart]
-    hiv_mod_all(par, t, anyelig_idx, cd4elig_idx, artpop, hivpop, everARTelig_idx, births_by_ha, pop, age_binner, grad, out_dict)
+  if β[:proj_steps][(t - 2) * HIVSTEPS_PER_YEAR + 1] >= β[:tsEpidemicStart]
+    hiv_mod_all(β, x, t, anyelig_idx, cd4elig_idx, everARTelig_idx, births_by_ha, age_binner, grad, out_dict)
   end
   
   # Adjust to a target population
-  if par[:popadjust]
-    adjust_pop!(par, t, pop, hivpop, artpop, out_dict)
+  if β[:popadjust]
+    adjust_pop!(β, t, x, out_dict, age_binner)
   end
+  
 
   # Prevalence in pregnant women
-  preg_women_prev_one_step!(par, t, pop, hivpop, artpop, births, last_hivpop, last_artpop, out_dict)
+  preg_women_prev_one_step!(β, t, x, births, last_hivpop, last_artpop, out_dict)
 
   # Update output timeseries objects
-  out_dict[:pop][t, :, :, :] = pop
-  out_dict[:hivpop][t, :, :, :] = hivpop
-  out_dict[:artpop][t, :, :, :, :] = artpop
+  out_dict[:pop][t, :, :, :] = x[:pop]
+  out_dict[:hivpop][t, :, :, :] = x[:hivpop]
+  out_dict[:artpop][t, :, :, :, :] = x[:artpop]
 end
 
-function setup_baseline(par)
-  pop = zeros(pDS, NG, pAG)
-  pop[HIVN, :, :] = par[:basepop]'
+function setup_baseline(β)
+  # States
+  pop::Array{Float64, 3} = zeros(pDS, NG, pAG)
+  hivpop::Array{Float64, 3} = zeros(NG, hAG, hDS)
+  artpop::Array{Float64, 4} = zeros(NG, hAG, hDS, hTS)
+  # Fill base pop
+  pop[HIVN, :, :] = β[:basepop]'
   pop[HIVP, :, :] .= 0.
-  hivpop = zeros(NG, hAG, hDS)
-  artpop = zeros(NG, hAG, hDS, hTS)
-  prev15to49 = zeros(PROJ_YEARS)
+
+  x = Dict{Symbol, Array}(
+    :pop => pop,
+    :hivpop => hivpop,
+    :artpop => artpop,
+  )  
+
+  # Outputs
+  prev15to49::Array{Float64, 1} = zeros(PROJ_YEARS)
   pop_ts::Array{Float64, 4} = zeros(PROJ_YEARS, pDS, NG, pAG)
   hivpop_ts::Array{Float64, 4} = zeros(PROJ_YEARS, NG, hAG, hDS)
   artpop_ts::Array{Float64, 5} = zeros(PROJ_YEARS, NG, hAG, hDS, hTS)
@@ -123,9 +145,29 @@ function setup_baseline(par)
   entrantprev_out::Array{Float64, 1} = zeros(PROJ_YEARS)
   grad::Array{Float64, 3} = zeros(NG, hAG, hDS)
   everARTelig_idx = hDS
-
   # Fill with initial population
   pop_ts[1, :, :, :] = pop
+  
+  out_dict = Dict{Symbol, Array}(
+    :hivpop => hivpop_ts,
+    :artpop => artpop_ts,
+    :infections => infections,
+    :hivdeaths => hivdeaths,
+    :natdeaths => natdeaths,
+    :aidsdeaths_noart => aidsdeaths_noart,
+    :aidsdeaths_art => aidsdeaths_art,
+    :popadjust => popadjust,
+    :artinit => artinit,
+    :pregprevlag => pregprevlag,
+    :incrate15to49_ts => incrate15to49_ts,
+    :prev15to49_ts => prev15to49_ts,
+    :rvec => β[:rvec],
+    :prev15to49 => prev15to49,
+    :pregprev => pregprev,
+    :incid15to49 => incid15to49,
+    :entrantprev_out => entrantprev_out,
+    :pop => pop_ts
+  )
 
   # Construct age binners
   age_binner = zeros(sum(hAG_SPAN), length(hAG_SPAN))
@@ -142,41 +184,22 @@ function setup_baseline(par)
     j_start += j_n
   end
 
-  out_dict = Dict{Symbol, Array}(
-    :hivpop => hivpop_ts,
-    :artpop => artpop_ts,
-    :infections => infections,
-    :hivdeaths => hivdeaths,
-    :natdeaths => natdeaths,
-    :aidsdeaths_noart => aidsdeaths_noart,
-    :aidsdeaths_art => aidsdeaths_art,
-    :popadjust => popadjust,
-    :artinit => artinit,
-    :pregprevlag => pregprevlag,
-    :incrate15to49_ts => incrate15to49_ts,
-    :prev15to49_ts => prev15to49_ts,
-    :rvec => par[:rvec],
-    :prev15to49 => prev15to49,
-    :pregprev => pregprev,
-    :incid15to49 => incid15to49,
-    :entrantprev_out => entrantprev_out,
-    :pop => pop_ts
-  )
-  return pop, hivpop, artpop, everARTelig_idx, age_binner, 
+  return x, everARTelig_idx, age_binner, 
     max_age_binner, grad, out_dict
 end
 
-function sim_all!(par, pop, hivpop, artpop, everARTelig_idx, age_binner, max_age_binner, grad, out_dict)
-  for t = 2:par[:SIM_YEARS]
-    sim_one!(t, par, pop, hivpop, artpop,
+function sim_all!(β, x, everARTelig_idx, age_binner, max_age_binner, grad, out_dict)
+  for t = 2:β[:SIM_YEARS]
+    sim_one!(t, β, x,
       everARTelig_idx, age_binner, max_age_binner, grad, out_dict)
   end
 end
-function run_sim!(par)
+
+function run_sim!(β)
   # Setup baseline
-  pop, hivpop, artpop, everARTelig_idx, age_binner, max_age_binner, grad, out_dict= setup_baseline(par)
+  x, everARTelig_idx, age_binner, max_age_binner, grad, out_dict= setup_baseline(β)
   # Simulate all years
-  sim_all!(par, pop, hivpop, artpop, everARTelig_idx, age_binner, max_age_binner, grad, out_dict)
+  sim_all!(β, x, everARTelig_idx, age_binner, max_age_binner, grad, out_dict)
 
   # Calculate outputs
   hivn15to49 = dropdims(sum(out_dict[:pop][:, HIVN, :, pIDX_15TO49:(pIDX_15TO49 + pAG_15TO49 - 1)], dims = (2, 3, 4)), dims = (2, 3))
@@ -187,48 +210,48 @@ function run_sim!(par)
   return out_dict
 end
 
-function prep_inputs!(par)
-  if(size(par[:Sx])[1] == 66)
-    par[:Sx] = permutedims(par[:Sx], [3, 2, 1])
+function prep_inputs!(β)
+  if(size(β[:Sx])[1] == 66)
+    β[:Sx] = permutedims(β[:Sx], [3, 2, 1])
   end
-  if(size(par[:netmigr])[1] == 66)
-    par[:netmigr] = permutedims(par[:netmigr], [3, 2, 1])
+  if(size(β[:netmigr])[1] == 66)
+    β[:netmigr] = permutedims(β[:netmigr], [3, 2, 1])
   end
-  if(size(par[:cd4_mort])[1] != 2)
-    par[:cd4_mort] = permutedims(par[:cd4_mort], (3, 2, 1))
+  if(size(β[:cd4_mort])[1] != 2)
+    β[:cd4_mort] = permutedims(β[:cd4_mort], (3, 2, 1))
   end
-  if(size(par[:cd4_prog])[1] != 2)
-    par[:cd4_prog] = permutedims(par[:cd4_prog], (3, 2, 1))
+  if(size(β[:cd4_prog])[1] != 2)
+    β[:cd4_prog] = permutedims(β[:cd4_prog], (3, 2, 1))
   end
-  if(size(par[:frr_cd4])[1] != 53)
-    par[:frr_cd4] = permutedims(par[:frr_cd4], (3, 2, 1))
+  if(size(β[:frr_cd4])[1] != 53)
+    β[:frr_cd4] = permutedims(β[:frr_cd4], (3, 2, 1))
   end
-  if(size(par[:frr_art])[1] != 53)
-    par[:frr_art] = permutedims(par[:frr_art], (4, 3, 2, 1))
+  if(size(β[:frr_art])[1] != 53)
+    β[:frr_art] = permutedims(β[:frr_art], (4, 3, 2, 1))
   end
-  if(size(par[:incrr_age])[1] != 53)
-    par[:incrr_age] = permutedims(par[:incrr_age], (3, 2, 1))
+  if(size(β[:incrr_age])[1] != 53)
+    β[:incrr_age] = permutedims(β[:incrr_age], (3, 2, 1))
   end
-  if(size(par[:cd4_initdist])[1] != 2)
-    par[:cd4_initdist] = permutedims(par[:cd4_initdist], (3, 2, 1))
+  if(size(β[:cd4_initdist])[1] != 2)
+    β[:cd4_initdist] = permutedims(β[:cd4_initdist], (3, 2, 1))
   end
-  if(size(par[:targetpop])[1] == 66)
-    par[:targetpop] = permutedims(par[:targetpop], [3, 2, 1])
+  if(size(β[:targetpop])[1] == 66)
+    β[:targetpop] = permutedims(β[:targetpop], [3, 2, 1])
   end
-  if(size(par[:art_mort])[1] != 2)
-    par[:art_mort] = permutedims(par[:art_mort], (4, 3, 2, 1))
+  if(size(β[:art_mort])[1] != 2)
+    β[:art_mort] = permutedims(β[:art_mort], (4, 3, 2, 1))
   end
-  if(size(par[:paedsurv_artcd4dist])[1] != 53)
-    par[:paedsurv_artcd4dist] = permutedims(par[:paedsurv_artcd4dist], (4, 3, 2, 1))
+  if(size(β[:paedsurv_artcd4dist])[1] != 53)
+    β[:paedsurv_artcd4dist] = permutedims(β[:paedsurv_artcd4dist], (4, 3, 2, 1))
   end
-  if(size(par[:paedsurv_cd4dist])[1] != 53)
-    par[:paedsurv_cd4dist] = permutedims(par[:paedsurv_cd4dist], (3, 2, 1))
+  if(size(β[:paedsurv_cd4dist])[1] != 53)
+    β[:paedsurv_cd4dist] = permutedims(β[:paedsurv_cd4dist], (3, 2, 1))
   end
-  global PROJ_YEARS = par[:ss][:PROJ_YEARS]
-  global HIVSTEPS_PER_YEAR = par[:ss][:hiv_steps_per_year]
+  global PROJ_YEARS = β[:ss][:PROJ_YEARS]
+  global HIVSTEPS_PER_YEAR = β[:ss][:hiv_steps_per_year]
 
-  global hAG_SPAN = par[:ss][:h_ag_span]
-  global h_art_stage_dur = par[:ss][:h_art_stage_dur]
+  global hAG_SPAN = β[:ss][:h_ag_span]
+  global h_art_stage_dur = β[:ss][:h_art_stage_dur]
   global hAG_START = zeros(Int, hAG)
   for ha = 2:hAG
     hAG_START[ha] = hAG_START[ha-1] + hAG_SPAN[ha-1]
@@ -237,13 +260,4 @@ function prep_inputs!(par)
   global DT = 1.0/HIVSTEPS_PER_YEAR
 end
 
-function simmodJ(par = nothing)::Dict
-  if par === nothing
-    par = prep_par()
-  end
-  prep_inputs!(par)
-  out_dict = run_sim!(par)
-  
-  return out_dict
-end
 end
