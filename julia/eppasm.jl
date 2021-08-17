@@ -195,7 +195,7 @@ end
 
 function sim_one!(t, β, x, out_dict)
   # Project forward the population
-  births, births_by_ha, last_hivpop, last_artpop = pop_project_one_step!(β, t, x, out_dict)
+  births_by_ha = pop_project_one_step!(β, t, x, out_dict)
   
   # HIV model simulation
   if β[:proj_steps][(t - 2) * HIVSTEPS_PER_YEAR + 1] >= β[:tsEpidemicStart]
@@ -208,7 +208,7 @@ function sim_one!(t, β, x, out_dict)
   end
 
   # Prevalence in pregnant women
-  preg_women_prev_one_step!(β, t, x, births, last_hivpop, last_artpop, out_dict)
+  preg_women_prev_one_step!(β, t, x, births_by_ha, out_dict)
 
   # Update output timeseries objects
   out_dict[:pop][t, :, :, :] = x[:pop]
