@@ -24,11 +24,6 @@ module Tst
   # artpop = dropdims(sum(out[:artpop], dims = (2, 3,  4, 5)), dims = (2, 3, 4, 5))
   # println("Input:", round.(β[:art15plus_num], digits = 3))
   # println("Output:", round.(artpop, digits = 3))
-  
-
-
-  
-
 
 # β = prep_β()
 # β[:art15plus_num] .= 0

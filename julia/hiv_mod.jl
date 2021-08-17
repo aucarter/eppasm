@@ -9,7 +9,6 @@ end
   
 function hiv_mod_one_step!(β, x, t, hts, ts, births_by_ha, out_dict)
   hivdeaths_ha = zeros(NG, hAG)
-  
   disease_prog_mort!(β, x, hivdeaths_ha, t, out_dict)
   disease_transmission!(β, x, t, hts, ts, out_dict)
   if t >= β[:tARTstart]
@@ -27,7 +26,7 @@ end
   
 function disease_prog_mort!(β, x, hivdeaths_ha, t, out_dict)
   prog = β[:cd4_prog] .* x[:hivpop][:, :, 1:end - 1]
-  x[:grad][:, :, 1:end - 1] = prog
+  x[:grad][:, :, 1:end - 1] -= prog
   x[:grad][:, :, 2:end] += prog 
   deaths = β[:cd4_mort] .* x[:hivpop]
   out_dict[:aidsdeaths_noart][t, :, :, :] .+= DT .* deaths
