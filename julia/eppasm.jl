@@ -3,6 +3,7 @@ export simmodJ, pull_data
 
 using LinearAlgebra
 using Serialization
+using StaticArrays
 
 include("pop_project.jl")
 include("hiv_mod.jl")
@@ -84,6 +85,7 @@ function prep_β(data)
   end
   global DT = 1.0 / HIVSTEPS_PER_YEAR
   β[:everARTelig_idx] = hDS
+  # β[:rvec] .= 1 .* β[:rvec]
 
   # Construct age binners
   age_binner = zeros(sum(hAG_SPAN), length(hAG_SPAN))
@@ -184,6 +186,7 @@ end
 function sim_all!(β, x, out_dict)
   for t = 2:β[:SIM_YEARS]
     sim_one!(t, β, x, out_dict)
+
   end
 
   # Calculate additional outputs

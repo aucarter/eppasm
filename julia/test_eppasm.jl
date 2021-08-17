@@ -30,7 +30,7 @@ module Tst
 # @time out = simmodJ(β)
 
 if plot_diagnostics
-  display(plot(out[:prev15to49][11:53]))
+  plot(out[:prev15to49][11:53])
   display(plot!(correct_prev))
   plot_pop_ta = sum(out[:pop], dims = (2, 3))[:, 1, 1, :]
   display(heatmap(plot_pop_ta'))
@@ -39,6 +39,6 @@ end
 artpop = dropdims(sum(out[:artpop], dims = (2, 3, 4, 5)), dims = (2, 3, 4, 5))
 # hivpop = dropdims(sum(out[:hivpop], dims = (2, 4)), dims = (2, 4))
 # heatmap(hivpop')
-display(plot(artpop))
+plot(artpop)
 display(plot!(dropdims(sum(data[:art15plus_num], dims = 1), dims = 1)))
 end

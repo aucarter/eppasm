@@ -25,6 +25,7 @@ end
 
   
 function disease_prog_mort!(β, x, hivdeaths_ha, t, out_dict)
+  x[:grad] .= 0.
   prog = β[:cd4_prog] .* x[:hivpop][:, :, 1:end - 1]
   x[:grad][:, :, 1:end - 1] -= prog
   x[:grad][:, :, 2:end] += prog 
@@ -54,7 +55,7 @@ function disease_transmission!(β, x, t, hts, ts, out_dict)
     out_dict[:infections][t, :, :] .+= infections_a_dt
     x[:pop][HIVN, :, :] .-=  infections_a_dt
     x[:pop][HIVP, :, :] .+=  infections_a_dt
-    infections_ha = infections_a_dt * β[:age_binner]
+    infections_ha = infections_ts * β[:age_binner]
     x[:grad] .+= infections_ha .* β[:cd4_initdist]
   end
 end
