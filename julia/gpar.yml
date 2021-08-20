@@ -1,0 +1,36 @@
+AGE_START: 15 # First age
+NG: 2 # Number of Genders
+pAG: 66 # Number of Ages
+pDS: 2 # Number of population HIV states (pos / neg)
+pIDX_FERT: 1 # Start fertility idx
+pAG_FERT: 35 # Number of fertile ages
+pIDX_15TO49: 1 # Start 15:49 idx
+pAG_15TO49: 35 # Number of 15:49 ages
+pIDX_15PLUS: 1 # Start 15+
+pAG_15PLUS: 66 # Number of 15+ AGES
+hAG: 9 # HIV sim age bins
+hDS: 7 # CD4 count bins
+hTS: 3 # Time since ART initiation
+hIDX_FERT: 0
+hAG_FERT: 8
+hIDX_15TO49: 0
+hAG_15TO49: 8
+hIDX_15PLUS: 1
+hAG_15PLUS: 9
+hIDX_CD4_350: 3
+MALE: 1
+FEMALE: 2
+HIVN: 1
+HIVP: 2
+ART0MOS: 1
+EPP_RSPLINE: 0
+EPP_RTREND: 1
+EPP_DIRECTINCID: 2 # annual direct incidence inputs (as Spectrum)
+INCIDMOD_EPPSPEC: 0
+INCIDMOD_TRANSM: 1
+INCIDPOP_15TO49: 0 # age range corresponding to incidence input
+INCIDPOP_15PLUS: 1
+CD4_LOW_LIM: [500, 350, 250, 200, 100, 50, 0]
+CD4_UPP_LIM: [1000, 500, 350, 250, 200, 100, 50]
+eppmod: 0
+incidmod: 0
