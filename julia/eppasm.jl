@@ -11,26 +11,24 @@ include("hiv_mod.jl")
 include("treatment.jl")
 
 function simmodJ(data = nothing)::Dict
-  if data === nothing
-    data = pulldata()
-  end
-  p = prepp(data)
-  out_dict = runsim!(p)
-  return out_dict
+  p = prepp(data === nothing ? pulldata() : data)
+  out = runsim!(p)
+  return out
 end
 
-function pulldata()
+function pulldata()::Dict
   data = deserialize("data")
   return data
 end
 
-function prepp(data)
+function prepp(data::Dict)::NamedTuple
   p = NamedTuple()
   # Global parameters
   gpar = YAML.load_file("julia/gpar.yml"; dicttype=Dict{Symbol,Any})
   for k = keys(gpar)
     p = merge(p, [k=>gpar[k]])
   end
+  
   # Passed parameters
   for k = keys(data)
     if isa(data[k], Array)
@@ -77,17 +75,17 @@ function prepp(data)
   return p
 end
 
-function runsim!(p)
+function runsim!(p::NamedTuple)::Dict
   # Setup baseline
-  x, out_dict = setupbaseline(p)
+  x, out = setupbaseline(p)
   
   # Simulate all years
-  simall!(p, x, out_dict)
+  simall!(p, x, out)
 
-  return out_dict
+  return out
 end
 
-function setupbaseline(p)
+function setupbaseline(p::NamedTuple)::Tuple{Dict, Dict}
   # States
   pop = @MArray zeros(p.pDS, p.NG, p.pAG)
   hivpop = @MArray zeros(p.NG, p.hAG, p.hDS)
@@ -129,7 +127,7 @@ function setupbaseline(p)
   # Fill with initial population
   pop_ts[1, :, :, :] = pop
   
-  out_dict = Dict{Symbol, Array}(
+  out = Dict{Symbol, Array}(
     :hivpop => hivpop_ts,
     :artpop => artpop_ts,
     :infections => infections,
@@ -150,47 +148,47 @@ function setupbaseline(p)
     :pop => pop_ts
   )
 
-  return x, out_dict
+  return x, out
 end
 
-function simall!(p, x, out_dict)
+function simall!(p::NamedTuple, x::Dict, out::Dict)
   for t = 2:p.SIM_YEARS
-    simone!(t, p, x, out_dict)
+    simone!(t, p, x, out)
     @assert sum(x[:pop][p.HIVP, :, :]) - (sum(x[:artpop]) + sum(x[:hivpop])) < 1
   end
 
   # Calculate additional outputs
-  finaloutputs(p, out_dict)
+  finaloutputs(p, out)
 end
 
-function simone!(t, p, x, out_dict)
+function simone!(t::Int, p::NamedTuple, x::Dict, out::Dict)
   # Project forward the population
-  births_by_ha = pop_project_one_step!(p, t, x, out_dict)
+  births_by_ha = pop_project_one_step!(p, t, x, out)
   
   # HIV model simulation
   if p.proj_steps[(t - 2) * p.HIVSTEPS_PER_YEAR + 1] >= p.tsEpidemicStart
-    hiv_mod_all(p, x, t, births_by_ha, out_dict)
+    hiv_mod_all(p, x, t, out, births_by_ha)
   end
-  
+
   # Adjust to a target population
   if p.popadjust
-    adjust_pop!(p, t, x, out_dict)
+    adjust_pop!(p, t, x, out)
   end
 
   # Prevalence in pregnant women
-  preg_women_prev_one_step!(p, t, x, births_by_ha, out_dict)
+  preg_women_prev_one_step!(p, t, x, out, births_by_ha)
 
   # Update output timeseries objects
-  out_dict[:pop][t, :, :, :] = x[:pop]
-  out_dict[:hivpop][t, :, :, :] = x[:hivpop]
-  out_dict[:artpop][t, :, :, :, :] = x[:artpop]
+  out[:pop][t, :, :, :] = x[:pop]
+  out[:hivpop][t, :, :, :] = x[:hivpop]
+  out[:artpop][t, :, :, :, :] = x[:artpop]
 end
 
-function finaloutputs(p, out_dict)
-  hivn15to49 = dropdims(sum(out_dict[:pop][:, p.HIVN, :, p.pIDX_15TO49:(p.pIDX_15TO49 + p.pAG_15TO49 - 1)], dims = (2, 3, 4)), dims = (2, 3))
-  hivp15to49 = dropdims(sum(out_dict[:pop][:, p.HIVP, :, p.pIDX_15TO49:(p.pIDX_15TO49 + p.pAG_15TO49 - 1)], dims = (2, 3, 4)), dims = (2, 3))
-  out_dict[:prev15to49] = hivp15to49 ./ (hivn15to49 + hivp15to49)
-  out_dict[:incid15to49][2:end] ./= hivn15to49[1:end - 1]
+function finaloutputs(p::NamedTuple, out::Dict)
+  hivn15to49 = dropdims(sum(out[:pop][:, p.HIVN, :, p.pIDX_15TO49:(p.pIDX_15TO49 + p.pAG_15TO49 - 1)], dims = (2, 3, 4)), dims = (2, 3))
+  hivp15to49 = dropdims(sum(out[:pop][:, p.HIVP, :, p.pIDX_15TO49:(p.pIDX_15TO49 + p.pAG_15TO49 - 1)], dims = (2, 3, 4)), dims = (2, 3))
+  out[:prev15to49] = hivp15to49 ./ (hivn15to49 + hivp15to49)
+  out[:incid15to49][2:end] ./= hivn15to49[1:end - 1]
 end
 
 end
