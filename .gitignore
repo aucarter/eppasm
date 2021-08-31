@@ -11,3 +11,5 @@ dev/*
 inst/doc
 vignettes_src/eppasm-spectrum-workflow_cache/
 vignettes_src/
+*.toml
+TODO.md

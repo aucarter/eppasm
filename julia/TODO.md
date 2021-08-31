@@ -1,2 +1,14 @@
 - Look into the transition from counts to percent (there are some zeros coming in)
-- Implement edges stuff in the calculation of infections
+
+Transitions:
+- Demographic
+  - birth
+  - death
+  - migration
+  - ageing*
+- Disease:
+  - infection
+  - stage progression
+- Control
+  - treatment initiation
+  - ageing*
