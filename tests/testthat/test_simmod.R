@@ -1,5 +1,8 @@
 # context("test model simulation")
 library(eppasm)
+library(testthat)
+source("R/eppasm.R")
+source("R/infections.R")
 pjnz <- system.file("extdata/testpjnz", "Botswana2018.PJNZ", package="eppasm")
 bw <- prepare_spec_fit(pjnz, proj.end=2022.5)
 
@@ -27,15 +30,11 @@ bw_prev_mod <- c(0.00045, 0.00080, 0.0014, 0.00245, 0.00424, 0.00725, 0.01214,
                  0.2069, 0.20155, 0.19559, 0.1893, 0.1829, 0.1763, 0.16953, 0.16266)
 
 
-library(rbenchmark)
-benchmark(simmod(bw_fp))
+# library(rbenchmark)
 # benchmark(simmod(bw_fp, VERSION="R"))
-bw_fp$art15plus_num[] <- 0
-mod <- simmod(bw_fp)
 
-bw_fp$rvec[] <- 0
-bw_fp$iota <- 0
-mod <- simmod(bw_fp)
+mod <- simmod(bw_fp, VERSION="R")
+# mod <- simmod(bw_fp)
 prev(mod)
 
 test_that("model simulation returns correct prevalence", {
