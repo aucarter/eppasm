@@ -53,18 +53,13 @@ function initart!(x::Dict, hts::Int, p::NamedTuple, t::Int, Xartelig_15plus::Arr
     expect_mort_artelig15plus = dropdims(sum(p.cd4_mort .* artelig, dims = (2, 3)), dims = (2, 3))
     expect_mort_weight = p.cd4_mort ./ expect_mort_artelig15plus
     artinit_weight = @. ((1.0 - p.art_alloc_mxweight)/Xartelig_15plus + p.art_alloc_mxweight * expect_mort_weight)
-    # global flag
-    # if flag
-    #   display(x[:hivpop][1, :, :])
-    #   flag = false
-    # end
     artinit_hahm = artnum_init .* (artinit_weight .* artelig)
     artinit_hahm[artinit_hahm .> artelig] .= artelig[artinit_hahm .> artelig]
     expected_hivpop = x[:hivpop] .+ p.DT .* x[:grad]
     artinit_hahm[artinit_hahm .> expected_hivpop] .= expected_hivpop[artinit_hahm .> expected_hivpop]
   end
   x[:grad] .-= artinit_hahm / p.DT
-  x[:gradART] .+= artinit_hahm / p.DT
+  x[:gradART][:, :, :, 1] .+= artinit_hahm / p.DT
   out[:artinit][t, :, :, :] .+= artinit_hahm 
 end
 

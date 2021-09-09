@@ -55,7 +55,7 @@ if plot_diagnostics
   artpop = dropdims(sum(out[:artpop], dims = (2, 3, 4, 5)), dims = (2, 3, 4, 5))
   hivpop = dropdims(sum(out[:hivpop], dims = (2, 4)), dims = (2, 4))
   heatmap(hivpop')
-  plot(artpop)
+  plot(artpop, legend = :topleft)
   plot!(dropdims(sum(data[:art15plus_num] .* .!data[:art15plus_isperc], dims = 1), dims = 1))
   display(plot!(dropdims(sum(data[:art15plus_num] .* data[:art15plus_isperc] .* dropdims(sum(out[:pop][:, 2, :, :], dims = 3), dims = 3)', dims = 1), dims = 1)))
 end
