@@ -1,5 +1,5 @@
 module eppasm
-export simmodJ, pulldata
+export simmodJ, pulldata, prepp
 
 using LinearAlgebra
 using Serialization
@@ -10,8 +10,7 @@ include("pop_project.jl")
 include("hiv_mod.jl")
 include("treatment.jl")
 
-function simmodJ(data = nothing)::Dict
-  p = prepp(data === nothing ? pulldata() : data)
+function simmodJ(p::NamedTuple)::Dict
   out = runsim!(p)
   return out
 end
